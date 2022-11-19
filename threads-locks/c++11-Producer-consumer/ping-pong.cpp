@@ -1,4 +1,5 @@
 // pingPongConditionVariable.cpp
+// https://www.modernescpp.com/index.php/performancecomparison-of-condition-variables-and-atomics-in-c-20
 
 #include <condition_variable>
 #include <iostream>
