@@ -3,15 +3,16 @@
 #include <assert.h>
 #include <pthread.h>
 #include <stdlib.h>
-
-#include "common.h"
-#include "common_threads.h"
-
-#ifdef linux
 #include <semaphore.h>
-#elif __APPLE__
-#include "zemaphore.h"
-#endif
+
+// #include "common.h"
+// #include "common_threads.h"
+
+// #ifdef linux
+// #include <semaphore.h>
+// #elif __APPLE__
+// #include "zemaphore.h"
+// #endif
 
 int max;
 int loops;
@@ -45,20 +46,20 @@ int do_get() {
 void *producer(void *arg) {
     int i;
     for (i = 0; i < loops; i++) {
-	Sem_wait(&empty);
-	Sem_wait(&mutex);
+	sem_wait(&empty);
+	sem_wait(&mutex);
 	do_fill(i);
-	Sem_post(&mutex);
-	Sem_post(&full);
+	sem_post(&mutex);
+	sem_post(&full);
     }
 
     // end case
     for (i = 0; i < consumers; i++) {
-	Sem_wait(&empty);
-	Sem_wait(&mutex);
+	sem_wait(&empty);
+	sem_wait(&mutex);
 	do_fill(-1);
-	Sem_post(&mutex);
-	Sem_post(&full);
+	sem_post(&mutex);
+	sem_post(&full);
     }
 
     return NULL;
@@ -67,11 +68,11 @@ void *producer(void *arg) {
 void *consumer(void *arg) {
     int tmp = 0;
     while (tmp != -1) {
-	Sem_wait(&full);
-	Sem_wait(&mutex);
+	sem_wait(&full);
+	sem_wait(&mutex);
 	tmp = do_get();
-	Sem_post(&mutex);
-	Sem_post(&empty);
+	sem_post(&mutex);
+	sem_post(&empty);
 	printf("%lld %d\n", (long long int) arg, tmp);
     }
     return NULL;
@@ -94,18 +95,18 @@ int main(int argc, char *argv[]) {
 	buffer[i] = 0;
     }
 
-    Sem_init(&empty, max); // max are empty 
-    Sem_init(&full, 0);    // 0 are full
-    Sem_init(&mutex, 1);   // mutex
+    sem_init(&empty, 0,max); // max are empty 
+    sem_init(&full,0, 0);    // 0 are full
+    sem_init(&mutex,0, 1);   // mutex
 
     pthread_t pid, cid[CMAX];
-    Pthread_create(&pid, NULL, producer, NULL); 
+    pthread_create(&pid, NULL, producer, NULL); 
     for (i = 0; i < consumers; i++) {
-	Pthread_create(&cid[i], NULL, consumer, (void *) (long long int) i); 
+	pthread_create(&cid[i], NULL, consumer, (void *) (long long int) i); 
     }
-    Pthread_join(pid, NULL); 
+    pthread_join(pid, NULL); 
     for (i = 0; i < consumers; i++) {
-	Pthread_join(cid[i], NULL); 
+	pthread_join(cid[i], NULL); 
     }
     return 0;
 }
