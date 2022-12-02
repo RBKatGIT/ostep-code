@@ -3,7 +3,7 @@ https://www.educative.io/courses/operating-systems-virtualization-concurrency-pe
 Concurrent hash mpa is done using concurrent list
 each list has its own lock
 */
-#include "linkedlist.cpp"
+#include "linkedlist-c.cpp"
 #define BUCKETS (101)
 
 typedef struct __hash_t {
@@ -18,8 +18,8 @@ void Hash_Init(hash_t *H) {
 }
 
 // The list in which we insert the key is determined by mod key
-int Hash_Insert(hash_t *H, int key) {
-    return List_Insert(&H->lists[key % BUCKETS], key);
+void Hash_Insert(hash_t *H, int key) {
+    List_Insert(&H->lists[key % BUCKETS], key);
 }
 
 int Hash_Lookup(hash_t *H, int key) {

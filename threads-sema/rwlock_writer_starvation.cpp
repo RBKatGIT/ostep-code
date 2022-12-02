@@ -4,23 +4,7 @@
 #include <unistd.h>
 #include <semaphore.h>
 
-/*
-
-https://greenteapress.com/semaphores/LittleBookOfSemaphores.pdf - Page 91
-If a reader is in the critical section, it holds noWriters, but it doesn’t hold
-noReaders. Thus if a writer arrives it can lock noReaders, which will cause
-subsequent readers to queue.When the last reader exits, it signals noWriters, allowing any queued writers
-to proceed.
-
-When a writer is in the critical section it holds both noReaders and
-noWriters. This has the (relatively obvious) effect of insuring that there are no
-readers and no other writers in the critical section. In addition, writeSwitch
-has the (less obvious) effect of allowing multiple writers to queue on noWriters,
-but keeping noReaders locked while they are there. Thus, many writers can
-pass through the critical section without ever signaling noReaders. Only when
-the last writer exits can the readers enter.
-
-*/
+// Below pattern is also called Light Switch Pattern
 // #include "common.h"
 // #include "common_threads.h"
 
@@ -30,6 +14,10 @@ the last writer exits can the readers enter.
 // #include "zemaphore.h"
 // #endif
 
+// We keep track of the number of readers in the room so 
+// we can give special assignements for the first to arrive and
+// the last to leave
+// https://greenteapress.com/semaphores/LittleBookOfSemaphores.pdf
 /*
 LightSwitch takes one parameter, a semaphore that it will check and possibly hold.
 If the semaphore is locked, the calling thread blocks on semaphore and all
@@ -41,6 +29,7 @@ unlock has no effect until every thread that called lock also calls unlock.
 When the last thread calls unlock, it unlocks the semaphore.
 The first thread into a section locks a semaphore (or queues) and the last one out unlocks it.
 */
+
 struct LightSwitch
 {
     int counter = 0;
@@ -69,53 +58,90 @@ struct LightSwitch
     }
 };
 
+/*
+Problem : writer starvation - If a writer arrives while there are readers in the critical section, it might wait
+in queue forever while readers come and go. As long as a new reader arrives
+before the last of the current readers departs, there will always be at least one
+reader in the room.
+This situation is not a deadlock, because some threads are making progress,
+but it is not exactly desirable. A program like this might work as long as the
+load on the system is low, because then there are plenty of opportunities for the
+writers. But as the load increases the behavior of the system would deteriorate
+quickly 
+*/
+
 typedef struct _rwlock_t {
-    sem_t noReaders;
-    sem_t noWriters;
-    LightSwitch reader_switch; // to protect readers variable
-    LightSwitch writer_switch; // to protect writers variable
+    LightSwitch readLightSwitch;
+    sem_t roomEmpty; // for protecting the readers
+    int readers = 0;
 } rwlock_t;
 
 void rwlock_init(rwlock_t *lock) {
-    sem_init(&lock->noReaders, 0, 1); 
-    sem_init(&lock->noWriters, 0, 1); 
+    sem_init(&lock->roomEmpty, 0, 1); 
 }
 
-/*
-If a reader is in the critical section, it holds noWriters, but it doesn’t hold
-noReaders. Thus if a writer arrives it can lock noReaders, which will cause
-subsequent readers to queue.
-When the last reader exits, it signals noWriters, allowing any queued writers
-to proceed.
-*/
 void rwlock_acquire_readlock(rwlock_t *lock) {
-    sem_wait(&lock->noReaders);
-    lock->reader_switch.lock(lock->noWriters);
-    sem_post(&lock->noReaders);
+    lock->readLightSwitch.lock(lock->roomEmpty);
 }
 
 void rwlock_release_readlock(rwlock_t *lock) {
-    lock->reader_switch.unlock(lock->noWriters);
+    lock->readLightSwitch.unlock(lock->roomEmpty);
 }
 
-/*
-When a writer is in the critical section it holds both noReaders and
-noWriters. This has the (relatively obvious) effect of insuring that there are no
-readers and no other writers in the critical section. In addition, writeSwitch
-has the (less obvious) effect of allowing multiple writers to queue on noWriters,
-but keeping noReaders locked while they are there. Thus, many writers can
-pass through the critical section without ever signaling noReaders. Only when
-the last writer exits can the readers enter.
-*/
 void rwlock_acquire_writelock(rwlock_t *lock) {
-    lock->writer_switch.lock(lock->noReaders);
-    sem_wait(&lock->noWriters);
+    sem_wait(&lock->roomEmpty);
 }
 
 void rwlock_release_writelock(rwlock_t *lock) {
-    sem_post(&lock->noWriters);
-    lock->writer_switch.unlock(lock->noReaders);
+    sem_post(&lock->roomEmpty);
 }
+
+
+
+// typedef struct _rwlock_t {
+//     sem_t roomEmpty;
+//     sem_t readers_lock; // for protecting the readers
+//     int readers;
+// } rwlock_t;
+
+
+// void rwlock_init(rwlock_t *lock) {
+//     lock->readers = 0;
+//     sem_init(&lock->readers_lock, 0, 1); 
+//     sem_init(&lock->roomEmpty, 0, 1);  
+//     // If  a reade arrive when writer is in progress it will block
+//     // on roomEmpty, Subsequent readers will que on readers lock
+// }
+// // -The first reader that arrives will lock the roomEmpty 
+// // and the subsequent readers dont have to wait for roomEmpty
+// // Light switch pattern
+// // -Only one reader can queue on room empty, while several writers 
+// // may be qued on room empty
+// // - when the reader signaly roomempty the room must be empty 
+
+// void rwlock_acquire_readlock(rwlock_t *lock) {
+//     sem_wait(&lock->readers_lock);
+//     lock->readers++;
+//     if (lock->readers == 1)
+// 	    sem_wait(&lock->roomEmpty);
+//     sem_post(&lock->readers_lock);
+// }
+
+// void rwlock_release_readlock(rwlock_t *lock) {
+//     sem_wait(&lock->readers_lock);
+//     lock->readers--;
+//     if (lock->readers == 0)
+// 	    sem_post(&lock->roomEmpty);
+//     sem_post(&lock->readers_lock);
+// }
+
+// void rwlock_acquire_writelock(rwlock_t *lock) {
+//     sem_wait(&lock->roomEmpty);
+// }
+
+// void rwlock_release_writelock(rwlock_t *lock) {
+//     sem_post(&lock->roomEmpty);
+// }
 
 int read_loops;
 int write_loops;
